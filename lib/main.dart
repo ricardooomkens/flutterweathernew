@@ -1,6 +1,9 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:weather_icons/weather_icons.dart';
+import 'settings_page.dart';
 
 void main() {
   runApp(MyApp());
@@ -25,12 +28,33 @@ class WeatherScreen extends StatefulWidget {
 }
 
 class _WeatherScreenState extends State<WeatherScreen> {
-  final String apiKey = '4e09c58dd8b7f4d6b4e938c67cc73779'; // api key
-  TextEditingController cityController = TextEditingController();
-  String city = 'Spijkenisse'; // Default  on boot
+  final String apiKey = '4e09c58dd8b7f4d6b4e938c67cc73779'; // Your provided API key
+  String city = '';
   String temperature = '';
   String description = '';
-  IconData weatherIcon = Icons.cloud; // Default icon
+  IconData weatherIcon = Icons.cloud;
+  late SharedPreferences prefs;
+  List<ForecastItem> forecastItems = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeSharedPreferences();
+  }
+
+  void _initializeSharedPreferences() async {
+    prefs = await SharedPreferences.getInstance();
+    final storedCity = prefs.getString('defaultCity') ?? 'London';
+    setState(() {
+      city = storedCity;
+    });
+    await fetchWeatherAndForecastData(city); // Fetch data on app launch
+  }
+
+  Future<void> fetchWeatherAndForecastData(String cityName) async {
+    await fetchWeatherData(cityName);
+    await fetchForecastData(cityName);
+  }
 
   Future<void> fetchWeatherData(String cityName) async {
     final response = await http.get(Uri.parse(
@@ -41,34 +65,77 @@ class _WeatherScreenState extends State<WeatherScreen> {
       setState(() {
         temperature = data['main']['temp'].toString();
         description = data['weather'][0]['description'];
-        // Map weather conditions to place icons
         weatherIcon = _getWeatherIcon(data['weather'][0]['id']);
       });
     }
   }
 
-  IconData _getWeatherIcon(int condition) {
-    if (condition < 300) {
-      return Icons.flash_on; // Thunderstorm
-    } else if (condition < 400) {
-      return Icons.waves; // Drizzle
-    } else if (condition < 600) {
-      return Icons.cloud_queue; // Rain
-    } else if (condition < 700) {
-      return Icons.ac_unit; // Snow
-    } else if (condition < 800) {
-      return Icons.blur_on; // Atmosphere
-    } else if (condition == 800) {
-      return Icons.wb_sunny; // Clear
-    } else {
-      return Icons.cloud; // Clouds
+  Future<void> fetchForecastData(String cityName) async {
+    final forecastResponse = await http.get(Uri.parse(
+        'https://api.openweathermap.org/data/2.5/forecast?q=$cityName&appid=$apiKey&units=metric'));
+
+    if (forecastResponse.statusCode == 200) {
+      final forecastData = json.decode(forecastResponse.body);
+
+      setState(() {
+        forecastItems = [];
+
+        final List<dynamic> forecasts = forecastData['list'];
+
+        for (var i = 0; i < forecasts.length && i < 2; i++) {
+          final forecast = forecasts[i];
+          final dateTime = DateTime.fromMillisecondsSinceEpoch(forecast['dt'] * 1000);
+          final temperature = forecast['main']['temp'].toDouble();
+          final description = forecast['weather'][0]['description'];
+          final weatherIcon = _getWeatherIcon(forecast['weather'][0]['id']);
+
+          forecastItems.add(ForecastItem(
+            dateTime: dateTime,
+            temperature: temperature,
+            description: description,
+            weatherIcon: weatherIcon,
+          ));
+        }
+
+      });
     }
   }
 
-  @override
-  void initState() {
-    super.initState();
-    fetchWeatherData(city);
+  IconData _getWeatherIcon(int condition) {
+    if (condition >= 200 && condition < 300) {
+      return WeatherIcons.thunderstorm; // Thunderstorm
+    } else if (condition >= 300 && condition < 600) {
+      return WeatherIcons.rain; // Drizzle/Rain
+    } else if (condition >= 600 && condition < 700) {
+      return WeatherIcons.snow; // Snow
+    } else if (condition >= 700 && condition < 800) {
+      return WeatherIcons.fog; // Atmosphere (Fog/Mist)
+    } else if (condition == 800) {
+      return WeatherIcons.day_sunny; // Clear Sky
+    } else if (condition >= 801 && condition <= 804) {
+      return WeatherIcons.cloudy; // Cloudy
+    } else {
+      return WeatherIcons.alien; // Default icon for unrecognized conditions
+    }
+  }
+
+  void _navigateToSettings() async {
+    final newDefaultCity = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => SettingsPage(defaultCity: city)),
+    );
+
+    if (newDefaultCity != null) {
+      _updateDefaultCity(newDefaultCity);
+    }
+  }
+
+  void _updateDefaultCity(String newDefaultCity) {
+    prefs.setString('defaultCity', newDefaultCity);
+    setState(() {
+      city = newDefaultCity;
+      fetchWeatherAndForecastData(city);
+    });
   }
 
   @override
@@ -78,50 +145,81 @@ class _WeatherScreenState extends State<WeatherScreen> {
         title: Text('Weather App'),
       ),
       body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            Icon(
-              weatherIcon,
-              size: 64,
-            ),
-            Text(
-              'Weather in $city',
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-            ),
-            SizedBox(height: 20),
-            Text(
-              'Temperature: $temperature°C',
-              style: TextStyle(fontSize: 20),
-            ),
-            SizedBox(height: 10),
-            Text(
-              'Description: $description',
-              style: TextStyle(fontSize: 18),
-            ),
-            SizedBox(height: 20),
-            Padding(
-              padding: const EdgeInsets.all(20.0),
-              child: TextField(
-                controller: cityController,
-                decoration: InputDecoration(
-                  labelText: 'Enter city name',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                setState(() {
-                  city = cityController.text;
-                  fetchWeatherData(city);
-                });
-              },
-              child: Text('Get Weather'),
-            ),
-          ],
+      child: Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: <Widget>[
+      Icon(
+      weatherIcon,
+      size: 64,
+    ),
+    Text(
+    'Weather in $city',
+    style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+    ),
+    SizedBox(height: 20),
+    Text(
+    'Temperature: $temperature°C',
+    style: TextStyle(fontSize: 20),
+    ),
+    SizedBox(height: 10),
+    Text(
+    'Description: $description',
+    style: TextStyle(fontSize: 18),
+    ),
+        SizedBox(height: 20),
+        Text(
+          'Upcoming 4 Hours Forecast',
+          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
         ),
+        SizedBox(height: 10),
+        Expanded(
+          child: ListView.builder(
+            itemBuilder: (context, index) {
+              final forecastItem = forecastItems[index];
+              return ListTile(
+                leading: Icon(forecastItem.weatherIcon),
+                title: Text(
+                  '${forecastItem.dateTime.hour}:00 - ${forecastItem.temperature.toStringAsFixed(1)}°C',
+                ),
+                subtitle: Text(forecastItem.description),
+              );
+            },
+          ),
+        ),
+      ],
+      ),
+      ),
+      bottomNavigationBar: BottomNavigationBar(
+        items: [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.home),
+            label: 'Home',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.settings),
+            label: 'Settings',
+          ),
+        ],
+        onTap: (index) {
+          if (index == 1) {
+            _navigateToSettings();
+          }
+        },
       ),
     );
   }
+}
+
+class ForecastItem {
+  final DateTime dateTime;
+  final double temperature;
+  final String description;
+  final IconData weatherIcon;
+
+  ForecastItem({
+    required this.dateTime,
+    required this.temperature,
+    required this.description,
+    required this.weatherIcon,
+  });
 }
