@@ -82,7 +82,10 @@ class _WeatherScreenState extends State<WeatherScreen> {
 
         final List<dynamic> forecasts = forecastData['list'];
 
-        for (var i = 0; i < forecasts.length && i < 2; i++) {
+        // Limit the loop to the number of available forecasts or 2, whichever is smaller.
+        final numberOfForecasts = forecasts.length < 2 ? forecasts.length : 2;
+
+        for (var i = 0; i < numberOfForecasts; i++) {
           final forecast = forecasts[i];
           final dateTime = DateTime.fromMillisecondsSinceEpoch(forecast['dt'] * 1000);
           final temperature = forecast['main']['temp'].toDouble();
@@ -96,7 +99,6 @@ class _WeatherScreenState extends State<WeatherScreen> {
             weatherIcon: weatherIcon,
           ));
         }
-
       });
     }
   }
@@ -148,10 +150,16 @@ class _WeatherScreenState extends State<WeatherScreen> {
       child: Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: <Widget>[
-      Icon(
-      weatherIcon,
-      size: 64,
-    ),
+      Padding(
+      padding: const EdgeInsets.only(bottom: 30.0), // Adjust the padding as needed
+        child: Icon(
+          weatherIcon,
+          size: 64,
+        ),
+      )
+
+
+    ,
     Text(
     'Weather in $city',
     style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
@@ -166,26 +174,36 @@ class _WeatherScreenState extends State<WeatherScreen> {
     'Description: $description',
     style: TextStyle(fontSize: 18),
     ),
-        SizedBox(height: 20),
-        Text(
-          'Upcoming 4 Hours Forecast',
-          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-        ),
-        SizedBox(height: 10),
-        Expanded(
-          child: ListView.builder(
-            itemBuilder: (context, index) {
-              final forecastItem = forecastItems[index];
-              return ListTile(
-                leading: Icon(forecastItem.weatherIcon),
-                title: Text(
-                  '${forecastItem.dateTime.hour}:00 - ${forecastItem.temperature.toStringAsFixed(1)}°C',
-                ),
-                subtitle: Text(forecastItem.description),
-              );
-            },
+    SizedBox(height: 20),
+    Text(
+    'Upcoming 4 Hours Forecast',
+    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+    ),
+    SizedBox(height: 10),
+    Expanded(
+    child: ListView.builder(
+      itemCount: forecastItems.length,
+      itemBuilder: (context, index) {
+        final forecastItem = forecastItems[index];
+        return ListTile(
+          title: Row( // Wrap in a Row
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(right: 16.0), // Adjust the padding as needed
+                child: Icon(forecastItem.weatherIcon),
+              ),
+              Text(
+                '${forecastItem.dateTime.hour}:00 - ${forecastItem.temperature.toStringAsFixed(1)}°C',
+              ),
+            ],
           ),
-        ),
+          subtitle: Text(forecastItem.description),
+        );
+      },
+    ),
+
+
+    ),
       ],
       ),
       ),
@@ -223,3 +241,4 @@ class ForecastItem {
     required this.weatherIcon,
   });
 }
+
